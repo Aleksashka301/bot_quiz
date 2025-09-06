@@ -1,3 +1,4 @@
 python-telegram-bot==13.8
 environs==14.3.0
 urllib3==1.26.20
+redis==6.4.0
