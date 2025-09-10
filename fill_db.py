@@ -40,7 +40,7 @@ if __name__ == '__main__':
 	env.read_env()
 
 	parser = argparse.ArgumentParser(description='Указание файла с вопросами и ответами для викторины')
-	parser.add_argument('file', help='Файл для загрузки')
+	parser.add_argument('--file', help='Файл для загрузки', default='1vs1200.txt')
 	args = parser.parse_args()
 
 	database = redis.Redis(
