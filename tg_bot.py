@@ -1,16 +1,46 @@
-import json
 import re
 import redis
 
+from dataclasses import dataclass
 from enum import Enum
 from environs import Env
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import CallbackContext, ConversationHandler, CommandHandler, Filters, MessageHandler, Updater
 
-from response_handlers import save_user_progress
+from additional_functions import save_user_progress
+
+
+@dataclass
+class QuizContext:
+    database: any
+    quiz_title: str
+    question: str
+    correct_answer: str
+    user_answer: str
+    user_id: int
+
+
+def get_quiz_context(update, context) -> QuizContext:
+    database = context.bot_data['database']
+    quiz_title = database.keys('quiz:*')[0]
+    key = context.user_data.get('current_key', 1)
+
+    correct_answer = database.hget(quiz_title, f'answer {key}').split('\n')[-1]
+    correct_answer = re.sub(r'\(.*?\)', '', correct_answer)
+    correct_answer = correct_answer.split('.')[0].strip().lower()
+
+    return QuizContext(
+        database=database,
+        quiz_title=quiz_title,
+        question=database.hget(quiz_title, f'question {key}'),
+        correct_answer=correct_answer,
+        user_answer=update.message.text.strip().lower(),
+        user_id=update.effective_user.id,
+    )
 
 
 def start(update: Update, context: CallbackContext):
+    context.user_data['current_key'] = 0
     keyboard = [
         ['Новый вопрос', 'Сдаться'],
         ['Мой счёт'],
@@ -27,37 +57,27 @@ def start(update: Update, context: CallbackContext):
 
 
 def question_handler(update: Update, context: CallbackContext):
-    database = context.bot_data['database']
-    quiz_title = database.keys('quiz:*')[0]
-    question_key = f'question {1}'
+    if 'current_key' not in context.user_data:
+        context.user_data['current_key'] = 1
+    else:
+        context.user_data['current_key'] += 1
 
-    correct_answer = database.hget(quiz_title, f'answer {1}').split('\n')[-1]
-    correct_answer = re.sub(r'\(.*?\)', '', correct_answer)
-    correct_answer = correct_answer.split('.')[0].strip().lower()
-    context.user_data['correct_answer'] = correct_answer
-
-    question = database.hget(quiz_title, question_key)
-    update.message.reply_text(question)
-
-    context.user_data['quiz_title'] = quiz_title
-    context.user_data['question'] = question
+    try:
+        data = get_quiz_context(update, context)
+        update.message.reply_text(data.question)
+    except AttributeError:
+        context.user_data['current_key'] = 0
+        update.message.reply_text('Викторина закончилась, нажав на "Новый вопрос", вы начнёте сначала!')
 
     return StagesQuiz.ANSWER
 
 
 def answer_handler(update: Update, context: CallbackContext):
-    database = context.bot_data['database']
-    quiz_title = context.user_data['quiz_title']
-    correct_answer = context.user_data['correct_answer']
+    data = get_quiz_context(update, context)
 
-    user_id = update.effective_user.id
-    question = context.user_data['question']
-    context.user_data['user_answer'] = update.message.text.strip().lower()
-    user_answer = context.user_data['user_answer']
-
-    if user_answer == correct_answer:
+    if data.user_answer == data.correct_answer:
         update.message.reply_text('Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос».')
-        save_user_progress(user_id, quiz_title, question, user_answer, True, database)
+        save_user_progress(data.user_id, data.quiz_title, data.question, data.user_answer, True, data.database)
     else:
         update.message.reply_text('Неправильно… Попробуешь ещё раз?')
 
@@ -65,31 +85,34 @@ def answer_handler(update: Update, context: CallbackContext):
 
 
 def wrong_answer_handler(update: Update, context: CallbackContext):
-    database = context.bot_data['database']
-    user_id = update.effective_user.id
-    quiz_title = context.user_data['quiz_title']
-    question = context.user_data['question']
-    user_answer = context.user_data['user_answer']
+    data = get_quiz_context(update, context)
 
-    if update.message.text.strip().lower() == 'да':
-        question_handler(update, context)
+    if data.user_answer == 'да':
+        update.message.reply_text(data.question)
+
         return StagesQuiz.ANSWER
-    elif update.message.text.strip().lower() == 'нет':
-        save_user_progress(user_id, quiz_title, question, user_answer, False, database)
+
+    elif data.user_answer == 'нет':
+        save_user_progress(
+            data.user_id,
+            data.quiz_title,
+            data.question,
+            data.user_answer,
+            False,
+            data.database
+        )
         update.message.reply_text('Нажми на "новый вопрос", чтобы продолжить!')
+
         return StagesQuiz.ANSWER
+
     else:
         update.message.reply_text('Напиши "да" или "нет".')
 
-def complete_handler(update: Update, context: CallbackContext):
-    database = context.bot_data['database']
-    user_id = update.effective_user.id
-    quiz_title = context.user_data['quiz_title']
-    question = context.user_data['question']
-    correct_answer = context.user_data['correct_answer']
+def surrender_handler(update: Update, context: CallbackContext):
+    data = get_quiz_context(update, context)
 
-    update.message.reply_text(correct_answer)
-    save_user_progress(user_id, quiz_title, question, '', False, database)
+    update.message.reply_text(data.correct_answer)
+    save_user_progress(data.user_id, data.quiz_title, data.question, '', False, data.database)
 
     return question_handler(update, context)
 
@@ -122,12 +145,12 @@ if __name__ == '__main__':
         states={
             StagesQuiz.ANSWER: [
                 MessageHandler(Filters.regex('^Новый вопрос$'), question_handler),
-                MessageHandler(Filters.regex('^Сдаться$'), complete_handler),
+                MessageHandler(Filters.regex('^Сдаться$'), surrender_handler),
                 MessageHandler(Filters.text & ~Filters.command, answer_handler),
             ],
             StagesQuiz.WRONG_ANSWER: [
                 MessageHandler(Filters.regex('^Новый вопрос$'), question_handler),
-                MessageHandler(Filters.regex('^Сдаться$'), complete_handler),
+                MessageHandler(Filters.regex('^Сдаться$'), surrender_handler),
                 MessageHandler(Filters.text & ~Filters.command, wrong_answer_handler)
             ],
         },
@@ -136,6 +159,5 @@ if __name__ == '__main__':
 
     dispatcher.add_handler(conv_handler)
 
-    # database.flushdb()
     updater.start_polling()
     updater.idle()
