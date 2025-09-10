@@ -73,7 +73,7 @@ if __name__ == '__main__':
     keyboard.add_button('Счёт', color=VkKeyboardColor.POSITIVE)
 
     longpoll = VkLongPoll(vk_session)
-    current_key = 30
+    current_key = 0
     have_question = False
     wrong_answer = False
 
