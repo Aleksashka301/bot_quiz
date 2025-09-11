@@ -17,7 +17,7 @@ class QuizContext:
     quiz_title: str
     question: str
     correct_answer: str
-    user_id: int
+    user_id: str
 
 
 def build_quiz_context(database, event, current_key: int = 1) -> QuizContext:
@@ -32,7 +32,7 @@ def build_quiz_context(database, event, current_key: int = 1) -> QuizContext:
         quiz_title=quiz_title,
         question=database.hget(quiz_title, f'question {current_key}'),
         correct_answer=correct_answer,
-        user_id=event.user_id,
+        user_id=f'vk:{event.user_id}',
     )
 
 
@@ -115,7 +115,7 @@ if __name__ == '__main__':
                 have_question = False
             elif event.text == 'Сдаться':
                 current_key += 1
-                send_message(vk, event, data.correct_answer, keyboard)
+                send_message(vk, event, f'Ответ: \n\n{data.correct_answer}', keyboard)
                 question = get_question(database, event, current_key)
                 send_message(vk, event, question, keyboard)
             else:
