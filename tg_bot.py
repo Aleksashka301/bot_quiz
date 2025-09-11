@@ -17,7 +17,7 @@ class QuizContext:
     question: str
     correct_answer: str
     user_answer: str
-    user_id: int
+    user_id: str
 
 
 def get_quiz_context(update, context) -> QuizContext:
@@ -35,7 +35,7 @@ def get_quiz_context(update, context) -> QuizContext:
         question=database.hget(quiz_title, f'question {key}'),
         correct_answer=correct_answer,
         user_answer=update.message.text.strip().lower(),
-        user_id=update.effective_user.id,
+        user_id=f'tg:{update.effective_user.id}',
     )
 
 
@@ -111,7 +111,7 @@ def wrong_answer_handler(update: Update, context: CallbackContext):
 def surrender_handler(update: Update, context: CallbackContext):
     data = get_quiz_context(update, context)
 
-    update.message.reply_text(data.correct_answer)
+    update.message.reply_text(f'Ответ:\n\n{data.correct_answer}')
     save_user_progress(data.user_id, data.quiz_title, data.question, '', False, data.database)
 
     return question_handler(update, context)
