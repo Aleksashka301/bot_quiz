@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     for event in longpoll.listen():
         if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-            data = build_quiz_context(database, event, current_key=1 if current_key == 0 else current_key)
+            context_data = build_quiz_context(database, event, current_key=1 if current_key == 0 else current_key)
 
             if event.text == 'Новый вопрос':
                 try:
@@ -96,32 +96,44 @@ if __name__ == '__main__':
 	                    'Викторина закончилась, нажав на "Новый вопрос", вы начнёте сначала!',
 	                    keyboard,
                     )
-            elif event.text == data.correct_answer:
+            elif event.text == context_data.correct_answer:
                 send_message(
 	                vk,
 	                event,
 	                'Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос».',
 	                keyboard
                 )
-                save_user_progress(data.user_id, data.quiz_title, data.question, event.text, True, database)
+                save_user_progress(
+	                context_data.user_id,
+	                context_data.quiz_title,
+	                context_data.question,
+	                event.text,
+	                True,
+	                database,
+                )
             elif event.text == 'да' and wrong_answer:
                 question = get_question(database, event, current_key)
                 send_message(vk, event, question, keyboard)
                 wrong_answer = False
             elif event.text == 'нет' and wrong_answer:
-                save_user_progress(data.user_id, data.quiz_title, data.question, event.text,False, database)
+                save_user_progress(
+	                context_data.user_id,
+	                context_data.quiz_title,
+	                context_data.question,
+	                event.text,
+	                False,
+	                database,
+                )
                 send_message(vk, event, 'Нажми на "новый вопрос", чтобы продолжить!', keyboard)
                 wrong_answer = False
                 have_question = False
             elif event.text == 'Сдаться':
                 current_key += 1
-                send_message(vk, event, f'Ответ: \n\n{data.correct_answer}', keyboard)
+                send_message(vk, event, f'Ответ: \n\n{context_data.correct_answer}', keyboard)
                 question = get_question(database, event, current_key)
                 send_message(vk, event, question, keyboard)
+            elif event.text and have_question:
+                send_message(vk, event, 'Неправильно… Попробуешь ещё раз? Напиши "да" или "нет"', keyboard)
+                wrong_answer = True
             else:
-                if have_question:
-                    send_message(vk, event, 'Неправильно… Попробуешь ещё раз? Напиши "да" или "нет"', keyboard)
-                    wrong_answer = True
-                else:
-                    send_message(vk, event, 'Нажми "новый вопрос", чтобы продолжить!', keyboard)
-
+                send_message(vk, event, 'Нажми "новый вопрос", чтобы продолжить!', keyboard)
