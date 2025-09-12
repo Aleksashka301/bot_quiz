@@ -30,7 +30,7 @@ def get_questions_answers(file):
 	return quiz_questions_answers
 
 
-def creating_database(quiz, base):
+def recording_quiz_in_database(quiz, base):
 	quiz_title = quiz.pop('quiz_title')
 	base.hset(f'quiz:{quiz_title}', mapping=quiz)
 
@@ -51,4 +51,4 @@ if __name__ == '__main__':
 	)
 
 	quiz = get_questions_answers(args.file)
-	creating_database(quiz, database)
+	recording_quiz_in_database(quiz, database)
