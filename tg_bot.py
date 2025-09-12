@@ -50,21 +50,21 @@ def start(update: Update, context: CallbackContext):
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f'Добро пожаловать на викторину! Нажмите "Новый вопрос", чтобы начать или продолжить. '
-             '"Завершить", чтобы закончить викторину. '
+             '"Сдаться", чтобы получить ответ на полученный вопрос. '
              '"Мой счёт", узнать свой счёт.',
         reply_markup=markup
     )
 
 
-def question_handler(update: Update, context: CallbackContext):
+def send_question_user(update: Update, context: CallbackContext):
     if 'current_key' not in context.user_data:
         context.user_data['current_key'] = 1
     else:
         context.user_data['current_key'] += 1
 
     try:
-        data = get_quiz_context(update, context)
-        update.message.reply_text(data.question)
+        context_data = get_quiz_context(update, context)
+        update.message.reply_text(context_data.question)
     except AttributeError:
         context.user_data['current_key'] = 0
         update.message.reply_text('Викторина закончилась, нажав на "Новый вопрос", вы начнёте сначала!')
@@ -72,34 +72,41 @@ def question_handler(update: Update, context: CallbackContext):
     return StagesQuiz.ANSWER
 
 
-def answer_handler(update: Update, context: CallbackContext):
-    data = get_quiz_context(update, context)
+def handle_answer(update: Update, context: CallbackContext):
+    context_data = get_quiz_context(update, context)
 
-    if data.user_answer == data.correct_answer:
+    if context_data.user_answer == context_data.correct_answer:
         update.message.reply_text('Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос».')
-        save_user_progress(data.user_id, data.quiz_title, data.question, data.user_answer, True, data.database)
+        save_user_progress(
+            context_data.user_id,
+            context_data.quiz_title,
+            context_data.question,
+            context_data.user_answer,
+            True,
+            context_data.database
+        )
     else:
         update.message.reply_text('Неправильно… Попробуешь ещё раз?')
 
         return StagesQuiz.WRONG_ANSWER
 
 
-def wrong_answer_handler(update: Update, context: CallbackContext):
-    data = get_quiz_context(update, context)
+def handle_incorrect_answer(update: Update, context: CallbackContext):
+    context_data = get_quiz_context(update, context)
 
-    if data.user_answer == 'да':
-        update.message.reply_text(data.question)
+    if context_data.user_answer == 'да':
+        update.message.reply_text(context_data.question)
 
         return StagesQuiz.ANSWER
 
-    elif data.user_answer == 'нет':
+    elif context_data.user_answer == 'нет':
         save_user_progress(
-            data.user_id,
-            data.quiz_title,
-            data.question,
-            data.user_answer,
+            context_data.user_id,
+            context_data.quiz_title,
+            context_data.question,
+            context_data.user_answer,
             False,
-            data.database
+            context_data.database
         )
         update.message.reply_text('Нажми на "новый вопрос", чтобы продолжить!')
 
@@ -109,12 +116,19 @@ def wrong_answer_handler(update: Update, context: CallbackContext):
         update.message.reply_text('Напиши "да" или "нет".')
 
 def surrender_handler(update: Update, context: CallbackContext):
-    data = get_quiz_context(update, context)
+    context_data = get_quiz_context(update, context)
 
-    update.message.reply_text(f'Ответ:\n\n{data.correct_answer}')
-    save_user_progress(data.user_id, data.quiz_title, data.question, '', False, data.database)
+    update.message.reply_text(f'Ответ:\n\n{context_data.correct_answer}')
+    save_user_progress(
+        context_data.user_id,
+        context_data.quiz_title,
+        context_data.question,
+        '',
+        False,
+        context_data.database,
+    )
 
-    return question_handler(update, context)
+    return send_question_user(update, context)
 
 
 if __name__ == '__main__':
@@ -140,18 +154,18 @@ if __name__ == '__main__':
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler(Filters.regex('^Новый вопрос$'), question_handler),
+            MessageHandler(Filters.regex('^Новый вопрос$'), send_question_user),
         ],
         states={
             StagesQuiz.ANSWER: [
-                MessageHandler(Filters.regex('^Новый вопрос$'), question_handler),
+                MessageHandler(Filters.regex('^Новый вопрос$'), send_question_user),
                 MessageHandler(Filters.regex('^Сдаться$'), surrender_handler),
-                MessageHandler(Filters.text & ~Filters.command, answer_handler),
+                MessageHandler(Filters.text & ~Filters.command, handle_answer),
             ],
             StagesQuiz.WRONG_ANSWER: [
-                MessageHandler(Filters.regex('^Новый вопрос$'), question_handler),
+                MessageHandler(Filters.regex('^Новый вопрос$'), send_question_user),
                 MessageHandler(Filters.regex('^Сдаться$'), surrender_handler),
-                MessageHandler(Filters.text & ~Filters.command, wrong_answer_handler)
+                MessageHandler(Filters.text & ~Filters.command, handle_incorrect_answer)
             ],
         },
         fallbacks=[]
